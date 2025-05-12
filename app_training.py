@@ -15,6 +15,9 @@ from smolagents import CodeAgent, LiteLLMModel
 import os
 
 
+from litellm import completion
+import json
+
 
 
 
@@ -26,10 +29,13 @@ ADDRESS_DEFAULT = "[10.7724,106.65922]"
 
 # Set environment variables for API keys
 
+os.environ['GEMINI_API_KEY'] = GOOGLE_API_KEY
 
-search_agent = OpenDeepSearchTool(model_name="openrouter/google/gemini-2.5-pro-exp-03-25:free", reranker="jina") # Set reranker to "jina" or "infinity"
+
+
+search_agent = OpenDeepSearchTool(model_name="gemini/gemini-2.0-flash-001", reranker="jina") # Set reranker to "jina" or "infinity"
 model = LiteLLMModel(
-    "openrouter/google/gemini-2.0-flash-001",
+    "gemini/gemini-2.0-flash-001",
     temperature=0.2
 )
 
@@ -37,7 +43,7 @@ location = []
 location_coord = []
 locator = Nominatim(user_agent = "myapp")
 # location = locator.geocode(address)
-   
+response = None
 
 # Create a session variable
 if 'comparing' not in st.session_state:
@@ -100,8 +106,8 @@ with st.sidebar:
             #return
         
         # Step 2: Generate a response using the retrieved information and ChatGPT
-        response = generate_response_with_rag(question, retrieved_texts)
-        print(response)
+        # response = generate_response_with_rag(question, retrieved_texts)
+        # print(response)
     btn1 = st.button('Plan your trip')
 
 
@@ -118,11 +124,36 @@ with st.sidebar:
             st.write("Seeing the web: " +retrieved_texts[0])
             code_agent = CodeAgent(tools=[search_agent], model=model)
             query = "Địa điểm này và khu vực lân cận có điều gì thú vị cho khách du lịch, về ẩm thực, văn hóa, phong cảnh," \
-                     "lên kế hoạch tham quan khu vực này, nối tiếp chuyến đi với địa điểm trước " + str(location)
+                     "lên kế hoạch tham quan khu vực này, nối tiếp chuyến đi với địa điểm trước" \
+                     "Tìm các nhà hàng, khách sạn được đánh giá cao nhất trong khu vực với giá cả hợp lý và " \
+                     "lưu địa chỉ tọa độ vào câu trả lời" \
+                     "TÌm kiếm khoảng 3 nhà hàng và 3 khách sạn " + str(location)
             result = code_agent.run(query)
+            print(result)
+            full_trip += str(result)
 
-            full_trip += result
-        st.write("Have full trip, Proceessing to Database....")
+
+            # full_trip
+        code_agent = CodeAgent(tools=[search_agent], model=model)
+        query = "Dựa trên những  thông tin  đã thu thập, lên kế hoạch một chuyến phượt từ địa địa điểm đầu tiên đến cuối, đi bằng xe máy, " \
+        "đảm bảo 1 ngày di  chuyển không quá " \
+        "300km, giữ chi tiết phương thức di chuyển và các  địa điểm thú vị trong chuyến đi gắn kèm," \
+        "tọa  độ và đánh giá đã thu được tử các bước tìm kiếm" \
+        "lưu địa chỉ tọa độ vào câu trả lời"  + full_trip
+
+
+        response_dict = completion(
+            "gemini/gemini-2.0-flash-001",
+            temperature=0.2,
+            messages=[{ "content":query,"role": "user"}]
+            )
+                    
+
+        response = response_dict.choices[0].message.content
+        # result = model.run(query)
+        # print(response)
+        # print(response.choices[0].message.content)
+        st.write("Have full trip, Proceessing to Database, see you space cowboy....")
 
         st.empty()
         # retrieved_texts = search_duckduckgo(location)
@@ -176,5 +207,7 @@ data = None
 if map.get("last_clicked"):
     data = get_pos(map["last_clicked"]["lat"], map["last_clicked"]["lng"])
 
-if data is not None:
-    st.write(data)
+if response is not None:
+    st.write(response)
+    with open("road_trip.txt", "w") as f:
+        f.write(response)
